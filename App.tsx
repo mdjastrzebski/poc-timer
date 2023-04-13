@@ -15,30 +15,56 @@ function log(message: string) {
   logs.push(`${new Date().toLocaleTimeString()}: ${message}`);
 }
 
-function useDeadline(deadline: Date) {
-  const hasPassed = deadline <= new Date();
-  const [, forceRender] = React.useState({});
+function useAppState() {
+  const [appState, setAppState] = React.useState(AppState.currentState);
 
   React.useEffect(() => {
-    log("Effect");
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppState(state);
+    });
+
+    return () => subscription.remove();
+  });
+
+  return appState;
+}
+
+function isPendingDeadline(deadline?: Date | null) {
+  return deadline != null && deadline > new Date();
+}
+
+function useIsPendingDeadline(deadline?: Date | null) {
+  const [, forceRender] = React.useState({});
+  const appState = useAppState();
+
+  React.useEffect(() => {
+    log("Effect run");
+
+    if (deadline == null || appState !== "active") {
+      log("  Early return deadline == null || appState not active");
+      return;
+    }
 
     const ms = deadline.getTime() - Date.now();
     if (ms <= 0) {
+      log("  Early return deadline in the app");
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      log("forceRender");
+      log("timeout - forceRender");
       forceRender({});
     }, ms);
 
     return () => {
-      log("clearTimeout");
+      log("Effect cleanup - clearTimeout");
       clearTimeout(timeoutId);
     };
-  }, [deadline]);
+  }, [deadline, appState]);
 
-  return hasPassed;
+  const result = isPendingDeadline(deadline);
+  log(`Is Pending Deadline ${result}`);
+  return result;
 }
 
 function LogsView() {
@@ -64,7 +90,7 @@ function LogsView() {
 
 export default function App() {
   const [deadline, setDeadline] = React.useState(() => new Date());
-  const hasPassed = useDeadline(deadline);
+  const isPending = useIsPendingDeadline(deadline);
 
   const increaseDeadline = () => {
     logs = [];
@@ -76,7 +102,7 @@ export default function App() {
     <View style={styles.container}>
       <StatusBar />
       <Text>Deadline {deadline.toLocaleTimeString()}</Text>
-      <Text>Has Passed: {hasPassed ? "YES" : "NO"}</Text>
+      <Text>Is Pending Deadline: {isPending ? "YES" : "NO"}</Text>
 
       <TouchableOpacity style={styles.button} onPress={increaseDeadline}>
         <Text style={styles.buttonTitle}>Increase Deadline</Text>
